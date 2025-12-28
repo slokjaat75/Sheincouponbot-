@@ -1,0 +1,5 @@
+flask==2.3.3
+python-telegram-bot==20.7
+qrcode[pil]==7.4.2
+pillow==10.1.0
+gunicorn==20.1.0
