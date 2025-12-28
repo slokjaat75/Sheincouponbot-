@@ -758,18 +758,17 @@ async def run_bot():
                 break
 
 def start_flask():
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get("PORT", 8000))
     app.run(host='0.0.0.0', port=port)
 
 def start_all():
     flask_thread = Thread(target=start_flask, daemon=True)
     flask_thread.start()
     
-    print("🌐 Flask server started on port 8080")
+    print("🌐 Flask server started on port", port)
     print("🤖 Starting Telegram bot...")
     
     asyncio.run(run_bot())
 
-# ================= MAIN =================
 if __name__ == "__main__":
     start_all()
