@@ -265,6 +265,24 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_add_coupon_keyboard()
             )
             return
+            text == "💰 Change Price" and is_admin(user_id):
+        # Service selection keyboard बनाओ
+        price_keyboard = []
+        for key, service in SERVICES.items():
+            price_keyboard.append([
+                InlineKeyboardButton(
+                    f"{service['name']} - Current: ₹{service['price']}",
+                    callback_data=f"price_{key}"
+                )
+            ])
+        
+        await update.message.reply_text(
+            "💰 **Select service to change price:**\n\n"
+            "Current prices are shown below. Tap to change:",
+            reply_markup=InlineKeyboardMarkup(price_keyboard),
+            parse_mode="Markdown"
+        )
+        return
         elif text == "📊 View Stock":
             await update.message.reply_text(
                 get_stock_detailed(),
@@ -331,6 +349,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_state[user_id] = {"action": "broadcast"}
             return
         elif text == "🔙 User Menu":
+enu":
             if user_id in user_state:
                 del user_state[user_id]
             await update.message.reply_text(
@@ -393,8 +412,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_menu(user_id),
             parse_mode="Markdown"
         )
-        return
-    
+        r    
     elif text == "📢 Join Channel":
         await update.message.reply_text(
             f"📢 **Join Our Channel**\n\n"
