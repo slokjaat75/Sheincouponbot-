@@ -758,7 +758,7 @@ async def run_bot():
                 break
 
 # ================== RENDER ENTRY POINT =================
-pri(t("🚀 Starting Flask + Telegram bot (Render mode)
+ print("🚀 Starting Flask + Telegram bot (Render mode)")
 
 flask_thread = Thread(target=start_flask, daemon=True)
 flask_thread.start()
