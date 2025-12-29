@@ -6,8 +6,8 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile, Inl
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 # ================= CONFIG =================
-BOT_TOKEN = "7569076581:AAEz9Yp35UoFtC4dI1iCg2J8Z9N4rzwBQxI"
-ADMIN_IDS = [7679672318]
+BOT_TOKEN = "8361909857:AAF9rpNo3ncAFgB15dyj9wc4cB4jLhbvCZc"
+ADMIN_IDS = [6435124280]
 UPI_ID = "slokjaat75@fam"
 SHOP_NAME = "Shein Coupon Shop"
 SUPPORT_USERNAME = "@slokjaat75"
