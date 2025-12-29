@@ -1,4 +1,4 @@
-# ================= 24/7 SHEIN COUPON BOT =================
+6# ================= 24/7 SHEIN COUPON BOT =================
 from flask import Flask
 from threading import Thread
 import os
@@ -768,4 +768,8 @@ print("🚀 Starting Flask + Telegram bot (Render mode)")
 flask_thread = Thread(target=start_flask, daemon=True)
 flask_thread.start()
 
-asyncio.get_event_loop().create_task(run_bot())
+def start_bot_loop():
+    asyncio.run(run_bot())
+
+bot_thread = Thread(target=start_bot_loop, daemon=True)
+bot_thread.start()
