@@ -757,6 +757,10 @@ async def run_bot():
                 print("❌ Max retries reached. Bot stopped.")
                 break
 
+def start_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+    
 # ================== RENDER ENTRY POINT ==================
 
 print("🚀 Starting Flask + Telegram bot (Render mode)")
