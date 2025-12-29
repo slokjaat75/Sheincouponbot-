@@ -757,8 +757,9 @@ async def run_bot():
                 print("❌ Max retries reached. Bot stopped.")
                 break
 
-# ================== RENDER ENTRY POINT =================
- print("🚀 Starting Flask + Telegram bot (Render mode)")
+# ================== RENDER ENTRY POINT ==================
+
+print("🚀 Starting Flask + Telegram bot (Render mode)")
 
 flask_thread = Thread(target=start_flask, daemon=True)
 flask_thread.start()
