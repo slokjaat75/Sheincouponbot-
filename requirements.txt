@@ -1,11 +1,2 @@
-# Linux/Mac
-echo "python-telegram-bot==20.7
-qrcode[pil]==7.4.2
-Pillow==10.1.0
-python-dotenv==1.0.0" > requirements.txt
-
-# Windows (Command Prompt)
-echo python-telegram-bot==20.7 > requirements.txt
-echo qrcode[pil]==7.4.2 >> requirements.txt
-echo Pillow==10.1.0 >> requirements.txt
-echo python-dotenv==1.0.0 >> requirements.txt
+pip install python-telegram-bot==20.7
+pip install python-telegram-bot qrcode[pil] pillow
