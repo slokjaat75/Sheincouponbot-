@@ -493,7 +493,35 @@ enu":
             )
             save_data()
             return
-    
+
+    # Handle admin price change text input
+        elif state.get('action') == 'changing_price':
+            service_key = state.get('service_key')
+            if service_key and text:
+                if text.isdigit():
+                    new_price = int(text)
+                    old_price = SERVICES[service_key]['price']
+                    
+                    # Price update करो
+                    SERVICES[service_key]['price'] = new_price
+                    
+                    del user_state[user_id]
+                    await update.message.reply_text(
+                        f"✅ **Price Updated Successfully!**\n\n"
+                        f"📦 **Service:** {SERVICES[service_key]['name']}\n"
+                        f"💰 **Old Price:** ₹{old_price}\n"
+                        f"💰 **New Price:** ₹{new_price}\n\n"
+                        f"All new orders will use this updated price.",
+                        reply_markup=ADMIN_MENU,
+                        parse_mode="Markdown"
+                    )
+                else:
+                    await update.message.reply_text(
+                        "❌ Please enter a valid number for price.",
+                        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Cancel")]], resize_keyboard=True)
+                    )
+            return
+            
     # Handle redeem quantity input
     if is_admin(user_id) and user_id in user_state and user_state[user_id].get('action') == 'redeem_all_view':
         if text.isdigit():
@@ -796,7 +824,27 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     
     user_id = query.from_user.id
     data = query.data
-    
+
+# Price change selection
+    elif data.startswith("price_"):
+        if not is_admin(user_id):
+            await query.answer("❌ Admin only!", show_alert=True)
+            return
+        
+        service_key = data.split("_")[1]
+        user_state[user_id] = {
+            'action': 'changing_price',
+            'service_key': service_key
+        }
+        
+        await query.edit_message_text(
+            f"✏️ **Changing price for:** {SERVICES[service_key]['name']}\n"
+            f"💰 **Current Price:** ₹{SERVICES[service_key]['price']}\n\n"
+            "💵 **Enter new price (₹):**\n\n"
+            "_Example: Type '12' for ₹12_",
+            parse_mode="Markdown"
+        )
+
     # Service selection
     if data.startswith("select_"):
         key = data.split("_")[1]
