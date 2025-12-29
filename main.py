@@ -770,5 +770,11 @@ def start_all():
     
     asyncio.run(run_bot())
 
-if __name__ == "__main__":
-    start_all()
+# ================== RENDER ENTRY POINT ==================
+
+print("🚀 Starting Flask + Telegram bot (Render mode)")
+
+flask_thread = Thread(target=start_flask, daemon=True)
+flask_thread.start()
+
+asyncio.get_event_loop().create_task(run_bot())
