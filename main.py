@@ -757,10 +757,6 @@ async def run_bot():
                 print("❌ Max retries reached. Bot stopped.")
                 break
 
-def start_flask():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-    
 # ================== RENDER ENTRY POINT ==================
 
 print("🚀 Starting Flask + Telegram bot (Render mode)")
@@ -768,8 +764,4 @@ print("🚀 Starting Flask + Telegram bot (Render mode)")
 flask_thread = Thread(target=start_flask, daemon=True)
 flask_thread.start()
 
-def start_bot_loop():
-    asyncio.run(run_bot())
-
-bot_thread = Thread(target=start_bot_loop, daemon=True)
-bot_thread.start()
+asyncio.run(run_bot())   # ✅ Telegram bot MAIN THREAD me
