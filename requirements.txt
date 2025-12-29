@@ -1,2 +1,4 @@
-pip install python-telegram-bot==20.7
-pip install python-telegram-bot qrcode[pil] pillow
+python-telegram-bot==20.7
+qrcode[pil]==7.4.2
+Pillow==10.1.0
+python-dotenv==1.0.0
