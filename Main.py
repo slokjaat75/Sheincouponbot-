@@ -77,11 +77,14 @@ USER_MENU = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+
+
 ADMIN_MENU = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("📦 Add Coupons"), KeyboardButton("📊 View Stock")],
-        [KeyboardButton("🔄 Redeem Coupon"), KeyboardButton("📋 Pending Orders")],
-        [KeyboardButton("📢 Broadcast"), KeyboardButton("🔙 User Menu")]
+        [KeyboardButton("📦 Add Coupons"), KeyboardButton("💰 Change Price")],
+        [KeyboardButton("📊 View Stock"), KeyboardButton("📋 Pending Orders")],
+        [KeyboardButton("🔄 Redeem Coupon"), KeyboardButton("📢 Broadcast")],
+        [KeyboardButton("🔙 User Menu")]
     ],
     resize_keyboard=True
 )
@@ -107,11 +110,11 @@ def get_stock_detailed():
             stock_text += f"   Available: {', '.join(service['stock'][:5])}"
             if len(service['stock']) > 5:
                 stock_text += f" ... and {len(service['stock']) - 5} more"
-        stock_text += "\n"
-    return stock_text
+        stock_text += 
+        re stock_text
 
 def get_redeemable_coupons():
-    redeem_text = "🎟️ **Available Coupons for Redemption:**\n\n"
+redeemable_coupons"🎟️ **Available Coupons for Redemption:**\n\n"
     has_coupons = False
     
     for key, service in SERVICES.items():
