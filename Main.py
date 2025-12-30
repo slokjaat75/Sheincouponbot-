@@ -13,6 +13,7 @@ SHOP_NAME = "Shein Coupon Shop"
 SUPPORT_USERNAME = "@slokjaat75"
 CHANNEL_LINK = "https://t.me/slok_official_75"
 
+# Initial services (data will be loaded from file if exists)
 SERVICES = {
     "500": {"name": "500 Pe 500", "price": 8, "stock": []},
     "1000": {"name": "1000 Pe 1000", "price": 30, "stock": []},
@@ -57,16 +58,28 @@ def load_data():
             with open(DATA_FILE, 'r') as f:
                 data = json.load(f)
             
+            # Load all data
             orders = data.get("orders", {})
-            SERVICES = data.get("services", SERVICES)
+            
+            # Update SERVICES with saved data (preserve stock and prices)
+            saved_services = data.get("services", {})
+            for key in SERVICES:
+                if key in saved_services:
+                    SERVICES[key]["stock"] = saved_services[key].get("stock", [])
+                    SERVICES[key]["price"] = saved_services[key].get("price", SERVICES[key]["price"])
+            
             all_users = set(data.get("all_users", []))
             order_counter = data.get("order_counter", 1)
             pending_orders = data.get("pending_orders", [])
             redeemed_coupons = data.get("redeemed_coupons", {})
             print("✅ Bot data loaded successfully")
             print(f"📊 Loaded: {len(orders)} orders, {len(all_users)} users")
+            print(f"💰 Services loaded with prices: {[(s['name'], s['price']) for s in SERVICES.values()]}")
         except Exception as e:
             print(f"❌ Error loading data: {e}")
+            print("⚠️ Using default services data")
+    else:
+        print("⚠️ No data file found, starting with default data")
 
 # ================= KEYBOARDS =================
 USER_MENU = ReplyKeyboardMarkup(
@@ -77,14 +90,12 @@ USER_MENU = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-
-
 ADMIN_MENU = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("📦 Add Coupons"), KeyboardButton("💰 Change Price")],
-        [KeyboardButton("📊 View Stock"), KeyboardButton("📋 Pending Orders")],
-        [KeyboardButton("🔄 Redeem Coupon"), KeyboardButton("📢 Broadcast")],
-        [KeyboardButton("🔙 User Menu")]
+        [KeyboardButton("📦 Add Coupons"), KeyboardButton("📊 View Stock")],
+        [KeyboardButton("🔄 Redeem Coupon"), KeyboardButton("💰 Change Prices")],
+        [KeyboardButton("📋 Pending Orders"), KeyboardButton("📢 Broadcast")],
+        [KeyboardButton("🗑️ Clear Data"), KeyboardButton("🔙 User Menu")]
     ],
     resize_keyboard=True
 )
@@ -110,11 +121,19 @@ def get_stock_detailed():
             stock_text += f"   Available: {', '.join(service['stock'][:5])}"
             if len(service['stock']) > 5:
                 stock_text += f" ... and {len(service['stock']) - 5} more"
-        stock_text += 
-        re stock_text
+        stock_text += "\n"
+    return stock_text
+
+def get_current_prices():
+    price_text = "💰 **Current Coupon Prices:**\n\n"
+    for key, service in SERVICES.items():
+        price_text += f"📦 **{service['name']}**\n"
+        price_text += f"   Current Price: ₹{service['price']}\n"
+        price_text += f"   Stock Available: {len(service['stock'])}\n\n"
+    return price_text
 
 def get_redeemable_coupons():
-redeemable_coupons"🎟️ **Available Coupons for Redemption:**\n\n"
+    redeem_text = "🎟️ **Available Coupons for Redemption:**\n\n"
     has_coupons = False
     
     for key, service in SERVICES.items():
@@ -171,6 +190,16 @@ def get_add_coupon_keyboard():
         [InlineKeyboardButton("2000 Pe 2000", callback_data="add_2000")],
         [InlineKeyboardButton("4000 Pe 4000", callback_data="add_4000")],
         [InlineKeyboardButton("🔙 Cancel", callback_data="cancel_add")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_change_price_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("500 Pe 500", callback_data="price_500")],
+        [InlineKeyboardButton("1000 Pe 1000", callback_data="price_1000")],
+        [InlineKeyboardButton("2000 Pe 2000", callback_data="price_2000")],
+        [InlineKeyboardButton("4000 Pe 4000", callback_data="price_4000")],
+        [InlineKeyboardButton("🔙 Cancel", callback_data="cancel_price")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -268,24 +297,6 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_add_coupon_keyboard()
             )
             return
-            text == "💰 Change Price" and is_admin(user_id):
-        # Service selection keyboard बनाओ
-        price_keyboard = []
-        for key, service in SERVICES.items():
-            price_keyboard.append([
-                InlineKeyboardButton(
-                    f"{service['name']} - Current: ₹{service['price']}",
-                    callback_data=f"price_{key}"
-                )
-            ])
-        
-        await update.message.reply_text(
-            "💰 **Select service to change price:**\n\n"
-            "Current prices are shown below. Tap to change:",
-            reply_markup=InlineKeyboardMarkup(price_keyboard),
-            parse_mode="Markdown"
-        )
-        return
         elif text == "📊 View Stock":
             await update.message.reply_text(
                 get_stock_detailed(),
@@ -314,6 +325,13 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode="Markdown"
                 )
                 user_state[user_id] = {"action": "redeem_all_view"}
+            return
+        elif text == "💰 Change Prices":
+            await update.message.reply_text(
+                get_current_prices() + "\n👇 **Select service to change price:**",
+                reply_markup=get_change_price_keyboard(),
+                parse_mode="Markdown"
+            )
             return
         elif text == "📋 Pending Orders":
             if not pending_orders:
@@ -351,8 +369,22 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             user_state[user_id] = {"action": "broadcast"}
             return
+        elif text == "🗑️ Clear Data":
+            await update.message.reply_text(
+                "⚠️ **Clear All Data**\n\n"
+                "Are you sure you want to clear ALL bot data?\n\n"
+                "This will delete:\n"
+                "• All orders\n"
+                "• All users\n"
+                "• All coupons\n"
+                "• All pending orders\n\n"
+                "Type **CONFIRM DELETE** to proceed:",
+                reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Cancel")]], resize_keyboard=True),
+                parse_mode="Markdown"
+            )
+            user_state[user_id] = {"action": "confirm_delete"}
+            return
         elif text == "🔙 User Menu":
-enu":
             if user_id in user_state:
                 del user_state[user_id]
             await update.message.reply_text(
@@ -415,7 +447,8 @@ enu":
             reply_markup=get_menu(user_id),
             parse_mode="Markdown"
         )
-        r    
+        return
+    
     elif text == "📢 Join Channel":
         await update.message.reply_text(
             f"📢 **Join Our Channel**\n\n"
@@ -496,35 +529,83 @@ enu":
             )
             save_data()
             return
-
-    # Handle admin price change text input
-        elif state.get('action') == 'changing_price':
-            service_key = state.get('service_key')
-            if service_key and text:
-                if text.isdigit():
-                    new_price = int(text)
-                    old_price = SERVICES[service_key]['price']
-                    
-                    # Price update करो
-                    SERVICES[service_key]['price'] = new_price
-                    
+    
+    # Handle admin change price input
+    if is_admin(user_id) and user_id in user_state and user_state[user_id].get('action') == 'changing_price':
+        service_key = user_state[user_id].get('service_key')
+        if service_key:
+            try:
+                new_price = int(text.strip())
+                if new_price < 1 or new_price > 10000:
+                    await update.message.reply_text(
+                        "❌ Price must be between ₹1 and ₹10,000",
+                        reply_markup=ADMIN_MENU
+                    )
                     del user_state[user_id]
-                    await update.message.reply_text(
-                        f"✅ **Price Updated Successfully!**\n\n"
-                        f"📦 **Service:** {SERVICES[service_key]['name']}\n"
-                        f"💰 **Old Price:** ₹{old_price}\n"
-                        f"💰 **New Price:** ₹{new_price}\n\n"
-                        f"All new orders will use this updated price.",
-                        reply_markup=ADMIN_MENU,
-                        parse_mode="Markdown"
-                    )
-                else:
-                    await update.message.reply_text(
-                        "❌ Please enter a valid number for price.",
-                        reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Cancel")]], resize_keyboard=True)
-                    )
-            return
+                    return
+                
+                old_price = SERVICES[service_key]['price']
+                SERVICES[service_key]['price'] = new_price
+                
+                del user_state[user_id]
+                
+                await update.message.reply_text(
+                    f"✅ **Price Updated Successfully!**\n\n"
+                    f"📦 **Service:** {SERVICES[service_key]['name']}\n"
+                    f"💰 **Old Price:** ₹{old_price}\n"
+                    f"💰 **New Price:** ₹{new_price}\n\n"
+                    f"✅ **All future orders will use new price.**",
+                    reply_markup=ADMIN_MENU,
+                    parse_mode="Markdown"
+                )
+                save_data()
+                return
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ Please enter a valid number",
+                    reply_markup=ADMIN_MENU
+                )
+                del user_state[user_id]
+                return
+    
+    # Handle confirm delete
+    if is_admin(user_id) and user_id in user_state and user_state[user_id].get('action') == 'confirm_delete':
+        if text == "CONFIRM DELETE":
+            # Clear all data
+            global orders, all_users, order_counter, pending_orders, redeemed_coupons
+            orders.clear()
+            all_users.clear()
+            order_counter = 1
+            pending_orders.clear()
+            redeemed_coupons.clear()
             
+            # Clear all coupon stocks
+            for key in SERVICES:
+                SERVICES[key]['stock'] = []
+            
+            # Save empty data
+            save_data()
+            
+            del user_state[user_id]
+            
+            await update.message.reply_text(
+                "🗑️ **All Data Cleared Successfully!**\n\n"
+                "✅ All orders deleted\n"
+                "✅ All users cleared\n"
+                "✅ All coupons removed\n"
+                "✅ All pending orders cleared\n\n"
+                "Bot has been reset to initial state.",
+                reply_markup=ADMIN_MENU,
+                parse_mode="Markdown"
+            )
+        else:
+            del user_state[user_id]
+            await update.message.reply_text(
+                "❌ Data deletion cancelled.",
+                reply_markup=ADMIN_MENU
+            )
+        return
+    
     # Handle redeem quantity input
     if is_admin(user_id) and user_id in user_state and user_state[user_id].get('action') == 'redeem_all_view':
         if text.isdigit():
@@ -827,27 +908,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     
     user_id = query.from_user.id
     data = query.data
-
-# Price change selection
-    elif data.startswith("price_"):
-        if not is_admin(user_id):
-            await query.answer("❌ Admin only!", show_alert=True)
-            return
-        
-        service_key = data.split("_")[1]
-        user_state[user_id] = {
-            'action': 'changing_price',
-            'service_key': service_key
-        }
-        
-        await query.edit_message_text(
-            f"✏️ **Changing price for:** {SERVICES[service_key]['name']}\n"
-            f"💰 **Current Price:** ₹{SERVICES[service_key]['price']}\n\n"
-            "💵 **Enter new price (₹):**\n\n"
-            "_Example: Type '12' for ₹12_",
-            parse_mode="Markdown"
-        )
-
+    
     # Service selection
     if data.startswith("select_"):
         key = data.split("_")[1]
@@ -880,6 +941,35 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(
             "❌ Service selection cancelled.",
             reply_markup=get_menu(user_id)
+        )
+    
+    # Price change handling
+    elif data.startswith("price_"):
+        if not is_admin(user_id):
+            await query.answer("❌ Admin only!", show_alert=True)
+            return
+        
+        service_key = data.split("_")[1]
+        current_price = SERVICES[service_key]['price']
+        
+        user_state[user_id] = {
+            'action': 'changing_price',
+            'service_key': service_key
+        }
+        
+        await query.edit_message_text(
+            f"💰 **Change Price for {SERVICES[service_key]['name']}**\n\n"
+            f"Current Price: ₹{current_price}\n\n"
+            "Enter new price (in ₹):",
+            parse_mode="Markdown"
+        )
+    
+    elif data == "cancel_price":
+        if user_id in user_state:
+            del user_state[user_id]
+        await query.edit_message_text(
+            "❌ Price change cancelled.",
+            reply_markup=ADMIN_MENU
         )
     
     elif data.startswith("qty_redeem_"):
@@ -1212,8 +1302,52 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ADMIN_MENU
         )
 
+async def cleardata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ Admin only command!")
+        return
+    
+    if context.args and context.args[0] == "confirm":
+        # Clear all data
+        global orders, all_users, order_counter, pending_orders, redeemed_coupons
+        orders.clear()
+        all_users.clear()
+        order_counter = 1
+        pending_orders.clear()
+        redeemed_coupons.clear()
+        
+        # Clear all coupon stocks
+        for key in SERVICES:
+            SERVICES[key]['stock'] = []
+        
+        # Save empty data
+        save_data()
+        
+        await update.message.reply_text(
+            "🗑️ **All Data Cleared Successfully!**\n\n"
+            "✅ All orders deleted\n"
+            "✅ All users cleared\n"
+            "✅ All coupons removed\n"
+            "✅ All pending orders cleared\n\n"
+            "Bot has been reset to initial state.",
+            reply_markup=ADMIN_MENU,
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "⚠️ **Clear All Data**\n\n"
+            "This command will delete ALL bot data.\n\n"
+            "Usage: `/cleardata confirm`\n\n"
+            "Or use the '🗑️ Clear Data' button from admin menu.",
+            parse_mode="Markdown",
+            reply_markup=ADMIN_MENU
+        )
+
 # ================= MAIN =================
 def main():
+    # Load data when bot starts
     load_data()
     
     app = Application.builder().token(BOT_TOKEN).build()
@@ -1221,6 +1355,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
     app.add_handler(CommandHandler("redeem", redeem_command))
+    app.add_handler(CommandHandler("cleardata", cleardata_command))
     
     app.add_handler(CallbackQueryHandler(handle_callback_query))
     
@@ -1234,7 +1369,12 @@ def main():
     print(f"✅ UPI: {UPI_ID}")
     print(f"✅ Support: {SUPPORT_USERNAME}")
     print(f"✅ Admins: {ADMIN_IDS}")
-    print("✅ All errors fixed")
+    print(f"✅ Data persistence: Enabled")
+    print("=" * 70)
+    print("🆕 **New Features Added:**")
+    print("   • 💰 Change Prices (Admin only)")
+    print("   • 🗑️ Clear Data option")
+    print("   • 🔄 Data auto-save on restart")
     print("=" * 70)
     print("🚀 Bot is running! Press Ctrl+C to stop.")
     
