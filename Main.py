@@ -572,7 +572,8 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_admin(user_id) and user_id in user_state and user_state[user_id].get('action') == 'confirm_delete':
         if text == "CONFIRM DELETE":
             # Clear all data
-            global orders, all_users, order_counter, pending_orders, redeemed_coupons
+            async def handle_text(update, context):
+    global orders, all_users, order_counter, pending_orders, redeemed_coupons
             orders.clear()
             all_users.clear()
             order_counter = 1
