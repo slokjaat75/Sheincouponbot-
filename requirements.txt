@@ -2,3 +2,4 @@ python-telegram-bot==20.7
 qrcode[pil]==7.4.2
 Pillow==10.1.0
 python-dotenv==1.0.0
+requests
