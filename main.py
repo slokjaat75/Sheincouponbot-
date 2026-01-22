@@ -1059,35 +1059,35 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 amount = state.get("price", 0) * qty
                 
                 # ✅ Generate payment with YOUR API
-                try:
-                    response = requests.get(
-                        API_CREATE_URL,
-                        params={
-                            "access_token": API_ACCESS_TOKEN,
-                            "amount": amount,
-                            "note": f"Shein-{user_id}"
-                        },
-                        timeout=10
-                    )
-                    
-                    if response.status_code != 200:
-                        await update.message.reply_text(
-                            "❌ Payment gateway error. Please try again.",
-                            reply_markup=get_menu(user_id)
-                        )
-                        del user_state[user_id]
-                        return
-                    
-                    api_data = response.json()
-                    
-                    # ✅ Handle YOUR API response format
-                    if not api_data.get("success"):
-                        await update.message.reply_text(
-                            "❌ Error generating payment. Please try again later.",
-                            reply_markup=get_menu(user_id)
-                        )
-                        del user_state[user_id]
-                        return
+try:
+    response = requests.get(
+        API_CREATE_URL,
+        params={
+            "access_token": API_ACCESS_TOKEN,
+            "amount": amount,
+            "note": f"Shein-{user_id}"
+        },
+        timeout=10
+    )
+    
+    if response.status_code != 200:  # ✅ YAHAN INDENT CHECK KARO
+        await update.message.reply_text(
+            "❌ Payment gateway error. Please try again.",
+            reply_markup=get_menu(user_id)
+        )
+        del user_state[user_id]
+        return
+    
+    api_data = response.json()
+    
+    # ✅ Handle YOUR API response format
+    if not api_data.get("success"):
+        await update.message.reply_text(
+            "❌ Error generating payment. Please try again later.",
+            reply_markup=get_menu(user_id)
+        )
+        del user_state[user_id]
+        return
                     
                     order_id = str(api_data.get("order_id", ""))
                     qr_code_url = api_data.get("qr_code", "")
