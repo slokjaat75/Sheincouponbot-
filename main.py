@@ -49,6 +49,12 @@ today_stats = {
 }
 response_cache = {}
 
+# Payment tracking flags (NEW ADDED)
+payment_tracking = {
+    'has_coupon_been_sent': {},  # order_id -> bool
+    'is_checking': {}  # order_id -> bool
+}
+
 # Thread pool for high-performance operations
 thread_pool = ThreadPoolExecutor(max_workers=100)
 
@@ -71,7 +77,8 @@ def save_data():
             "order_counter": order_counter,
             "redeemed_coupons": redeemed_coupons,
             "last_backup": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "today_stats": today_stats
+            "today_stats": today_stats,
+            "payment_tracking": payment_tracking  # NEW: Save payment tracking
         }
         with open(DATA_FILE, 'w') as f:
             json.dump(data, f, indent=2)
@@ -83,7 +90,7 @@ def save_data():
 
 def load_data():
     """Load bot data from file"""
-    global orders, SERVICES, all_users, order_counter, redeemed_coupons, today_stats
+    global orders, SERVICES, all_users, order_counter, redeemed_coupons, today_stats, payment_tracking
     
     if os.path.exists(DATA_FILE):
         try:
@@ -118,6 +125,9 @@ def load_data():
                 }
             else:
                 today_stats = loaded_stats
+            
+            # Load payment tracking (NEW)
+            payment_tracking = data.get("payment_tracking", {'has_coupon_been_sent': {}, 'is_checking': {}})
             
             print(f"✅ Data loaded: {len(all_users)} users, {len(orders)} orders")
             return True
@@ -343,6 +353,12 @@ ADMIN_MENU = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+def get_cancel_keyboard(show_cancel=False):
+    """Get cancel keyboard"""
+    if show_cancel:
+        return ReplyKeyboardMarkup([[KeyboardButton("❌ Cancel Order")]], resize_keyboard=True)
+    return USER_MENU
+
 # ================= STATISTICS FUNCTIONS =================
 def get_general_statistics():
     """Get general statistics - FIXED"""
@@ -498,142 +514,56 @@ def get_redeem_keyboard():
     keyboard.append([InlineKeyboardButton("🔙 Cancel", callback_data="cancel_redeem")])
     return InlineKeyboardMarkup(keyboard)
 
-# ================= PAYMENT CHECKING FUNCTIONS =================
+# ================= PAYMENT CHECKING FUNCTIONS (UPDATED) =================
 async def check_single_payment(api_order_id, user_id, context, qr_msg_id):
     """Single payment check when user clicks "I Have Paid" button"""
     try:
+        # ✅ Check: Order exists and is pending
         if api_order_id not in orders:
             return False
         
         if orders[api_order_id].get('status') != 'pending':
             return False
         
-        # Wait 5 seconds
+        # ✅ Check if coupon already sent
+        if payment_tracking['has_coupon_been_sent'].get(api_order_id):
+            print(f"⚠️ Coupon already sent for {api_order_id}")
+            return True
+        
+        # ✅ Set checking flag to prevent multiple checks
+        if payment_tracking['is_checking'].get(api_order_id):
+            print(f"⚠️ Already checking for {api_order_id}")
+            return False
+        
+        payment_tracking['is_checking'][api_order_id] = True
+        
+        # ✅ Wait 5 seconds before checking
         await asyncio.sleep(5)
         
-        # Check payment status
+        # ✅ Check payment status
         response = requests.get(
             API_CHECK_URL, 
             params={"access_token": API_ACCESS_TOKEN, "orderid": api_order_id},
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Check if payment successful
-            if data.get("STATUS") == "TXN_SUCCESS" or data.get("success") == True:
-                order = orders.get(api_order_id)
-                if not order:
-                    return False
-                
-                # Delete QR message
-                try: 
-                    await context.bot.delete_message(chat_id=user_id, message_id=qr_msg_id)
-                except: 
-                    pass
-
-                service_key = order.get('service')
-                quantity = order.get('quantity', 1)
-                coupon_codes = []
-                
-                # Get coupons from stock
-                for _ in range(quantity):
-                    if SERVICES[service_key]['stock']:
-                        coupon_codes.append(SERVICES[service_key]['stock'].pop(0))
-                
-                # Update order
-                orders[api_order_id]['status'] = 'approved'
-                orders[api_order_id]['coupon_codes'] = coupon_codes
-                
-                # Update stats
-                today_stats["approved_orders"] += 1
-                today_stats["total_revenue"] += order.get('amount', 0)
-                today_stats["total_coupons"] += quantity
-                
-                service_name = order.get('service_name', 'Unknown')
-                if service_name in today_stats["service_counts"]:
-                    today_stats["service_counts"][service_name] += 1
-                
-                # Format coupon codes
-                if coupon_codes:
-                    coupon_text = "\n".join([f"• `{code}`" for code in coupon_codes])
-                else:
-                    coupon_text = "No coupons received"
-                
-                # Send success message
-                success_message = (
-                    f"✅ **Payment Approved!**\n\n"
-                    f"🆔 **Order ID:** `{api_order_id}`\n"
-                    f"📦 **Service:** {order.get('service_name', service_key)}\n"
-                    f"🔢 **Quantity:** {quantity}\n"
-                    f"💰 **Amount:** ₹{order.get('amount', 0)}\n"
-                    f"📅 **Date:** {order.get('date', 'N/A')}\n"
-                    f"🎟️ **Your Coupon Codes:**\n"
-                    f"{coupon_text}\n\n"
-                    f"💾 **Thanks for your purchase**"
-                )
-                
-                await context.bot.send_message(
-                    chat_id=order['user'],
-                    text=success_message,
-                    parse_mode="Markdown",
-                    reply_markup=get_menu(order['user'])
-                )
-                save_data()
-                return True
-        
-        return False
-    except Exception as e:
-        print(f"Single payment check error: {e}")
-        return False
-
-async def check_payment_background(api_order_id, qr_msg_id, user_id, context):
-    """Payment check with 20-second intervals and 5-minute timeout"""
-    checks = 0
-    max_checks = 60  # 5 minutes (5 seconds * 60 = 300 seconds)
-    
-    while checks < max_checks:
-        try:
-            if api_order_id not in orders:
-                return
-            
-            current_status = orders[api_order_id].get('status')
-            
-            # If order was cancelled
-            if current_status == 'cancelled':
-                try: 
-                    await context.bot.delete_message(chat_id=user_id, message_id=qr_msg_id)
-                except: 
-                    pass
-                
-                # ✅ ONLY ONE MESSAGE FOR CANCELLATION
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text="❌ Your order has been cancelled.",
-                    reply_markup=get_menu(user_id)
-                )
-                return
-
-            # ✅ Auto check every 20 seconds (every 4th check since we sleep 5 seconds)
-            if checks % 4 == 0:  # 20 seconds (4×5=20)
-                # ✅ Check payment status with YOUR API format
-                response = requests.get(
-                    API_CHECK_URL, 
-                    params={"access_token": API_ACCESS_TOKEN, "orderid": api_order_id},
                     timeout=5
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
                     
-                    # ✅ Check for new response format (Your API)
+                    # ✅ Check for payment success
                     if data.get("STATUS") == "TXN_SUCCESS" or data.get("success") == True:
+                        # ✅ Check again if coupon already sent
+                        if payment_tracking['has_coupon_been_sent'].get(api_order_id):
+                            break
+                        
                         order = orders.get(api_order_id)
                         if not order: 
-                            return
+                            break
                         
-                        # Delete QR message
+                        # ✅ Mark coupon as sent
+                        payment_tracking['has_coupon_been_sent'][api_order_id] = True
+                        
+                        # ✅ Delete QR message
                         try: 
                             await context.bot.delete_message(chat_id=user_id, message_id=qr_msg_id)
                         except: 
@@ -643,16 +573,16 @@ async def check_payment_background(api_order_id, qr_msg_id, user_id, context):
                         quantity = order.get('quantity', 1)
                         coupon_codes = []
                         
-                        # Safely get coupons from stock
+                        # ✅ Safely get coupons from stock
                         for _ in range(quantity):
                             if SERVICES[service_key]['stock']:
                                 coupon_codes.append(SERVICES[service_key]['stock'].pop(0))
                         
-                        # Update order with ACTUAL COUPON CODES
+                        # ✅ Update order
                         orders[api_order_id]['status'] = 'approved'
-                        orders[api_order_id]['coupon_codes'] = coupon_codes  # ✅ ACTUAL CODES SAVE
+                        orders[api_order_id]['coupon_codes'] = coupon_codes
                         
-                        # Update today's stats
+                        # ✅ Update today's stats
                         today_stats["approved_orders"] += 1
                         today_stats["total_revenue"] += order.get('amount', 0)
                         today_stats["total_coupons"] += quantity
@@ -661,13 +591,13 @@ async def check_payment_background(api_order_id, qr_msg_id, user_id, context):
                         if service_name in today_stats["service_counts"]:
                             today_stats["service_counts"][service_name] += 1
                     
-                        # ✅ Format coupon codes nicely
+                        # ✅ Format coupon codes
                         if coupon_codes:
                             coupon_text = "\n".join([f"• `{code}`" for code in coupon_codes])
                         else:
                             coupon_text = "No coupons received"
                         
-                        # ✅ Send success message with coupons
+                        # ✅ Send success message
                         success_message = (
                             f"✅ **Payment Approved!**\n\n"
                             f"🆔 **Order ID:** `{api_order_id}`\n"
@@ -722,7 +652,7 @@ async def check_payment_background(api_order_id, qr_msg_id, user_id, context):
 
 # ================= COMMAND HANDLERS =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start command - FIXED RESPONSE ISSUE"""
+    """Start command"""
     user_id = update.effective_user.id
     all_users.add(user_id)
     
@@ -734,7 +664,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 orders[internal_order_id]['status'] = 'cancelled'
         del user_state[user_id]
     
-    # FIXED: Get stock display with proper formatting
+    # Get stock display
     stock_display = get_stock_display()
     
     welcome_text = f"""{stock_display}
@@ -751,7 +681,7 @@ Select the coupon service you want to purchase👇"""
     save_data()
 
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Message handler - OPTIMIZED"""
+    """Message handler"""
     user_id = update.effective_user.id
     text = update.message.text if update.message else ""
     
@@ -779,6 +709,9 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_order_id = state.get('internal_order_id')
             if current_order_id and current_order_id in orders:
                 orders[current_order_id]['status'] = 'cancelled'
+                # ✅ Also remove from payment tracking
+                payment_tracking['has_coupon_been_sent'].pop(current_order_id, None)
+                payment_tracking['is_checking'].pop(current_order_id, None)
             
             await update.message.reply_text(
                 f"❌ **Order Cancelled Successfully!**\n\n"
@@ -883,11 +816,9 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             history_text = "📜 **Your Order History:**\n\n"
             for order_id, order in user_orders[:15]:  # Limit to 15 orders
-                # ✅ FIXED: Now showing ACTUAL COUPONS instead of quantity
                 coupon_codes = order.get('coupon_codes', [])
                 
                 if coupon_codes:
-                    # Show first 3 coupons and count
                     if len(coupon_codes) <= 3:
                         coupons_display = ", ".join([f"`{code}`" for code in coupon_codes])
                     else:
@@ -901,7 +832,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"🔢 **Quantity:** {order.get('quantity', 1)}\n"
                     f"💰 **Amount:** ₹{order.get('amount', 0)}\n"
                     f"📅 **Date:** {order.get('date', 'N/A')}\n"
-                    f"🎟️ **Coupons:** {coupons_display}\n"  # ✅ ACTUAL COUPONS SHOW
+                    f"🎟️ **Coupons:** {coupons_display}\n"
                     f"─────────────────\n"
                 )
         
@@ -1042,7 +973,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del user_state[user_id]
                 return
     
-    # Redeem quantity handling - FIXED INDENTATION
+    # Redeem quantity handling
     if is_admin(user_id) and user_id in user_state and user_state[user_id].get('action') == 'redeem_quantity':
         if text.isdigit():
             quantity = int(text)
@@ -1127,7 +1058,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 amount = state.get("price", 0) * qty
                 
-                # ✅ UPDATED: Generate payment with YOUR API
+                # ✅ Generate payment with YOUR API
                 try:
                     response = requests.get(
                         API_CREATE_URL,
@@ -1159,7 +1090,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         return
                     
                     order_id = str(api_data.get("order_id", ""))
-                    qr_code_url = api_data.get("qr_code", "")  # ✅ "qr_code" field in YOUR API
+                    qr_code_url = api_data.get("qr_code", "")
                     
                     if not order_id or not qr_code_url:
                         await update.message.reply_text(
@@ -1168,6 +1099,10 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         )
                         del user_state[user_id]
                         return
+                    
+                    # Initialize payment tracking for this order
+                    payment_tracking['has_coupon_been_sent'][order_id] = False
+                    payment_tracking['is_checking'][order_id] = False
                     
                     # Create order
                     orders[order_id] = {
@@ -1182,7 +1117,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "api_order_id": order_id,
                         "date": datetime.now().strftime("%d %B %Y"),
                         "time": datetime.now().strftime("%I:%M %p"),
-                        "coupon_codes": []  # ✅ Initialize empty, filled on approval
+                        "coupon_codes": []
                     }
                     
                     # Update today's stats for pending order
@@ -1191,7 +1126,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     user_state[user_id]['internal_order_id'] = order_id
                     user_state[user_id]['step'] = 'waiting_payment'
                     
-                    # ✅ UPDATED: Send QR with TWO BUTTONS
+                    # ✅ Send QR with TWO BUTTONS
                     payment_keyboard = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton("✅ I Have Paid", callback_data=f"paid_{order_id}"),
@@ -1214,7 +1149,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     qr_message_id = qr_message.message_id
                     
-                    # Start payment check in background (20-second intervals)
+                    # Start payment check in background (30-second intervals)
                     asyncio.create_task(
                         check_payment_background(order_id, qr_message_id, user_id, context)
                     )
@@ -1248,16 +1183,16 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_menu(user_id)
         )
 
-# ================= CALLBACK HANDLER =================
+# ================= CALLBACK HANDLER (UPDATED) =================
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback handler"""
+    """Callback handler with updated payment logic"""
     query = update.callback_query
     await query.answer()
     
     user_id = query.from_user.id
     data = query.data
     
-    # ✅ NEW: Handle "I Have Paid" button
+    # ✅ Handle "I Have Paid" button
     if data.startswith("paid_"):
         api_order_id = data.split("_")[1]
         
@@ -1273,8 +1208,21 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("Order already processed!", show_alert=True)
             return
         
+        # ✅ Check if coupon already sent
+        if payment_tracking['has_coupon_been_sent'].get(api_order_id):
+            await query.answer("Payment already verified! Check your messages.", show_alert=True)
+            return
+        
+        # ✅ Check if already checking
+        if payment_tracking['is_checking'].get(api_order_id):
+            await query.answer("Already checking payment... Please wait.", show_alert=True)
+            return
+        
+        # ✅ Set checking flag
+        payment_tracking['is_checking'][api_order_id] = True
+        
         # Start single payment check
-        await query.answer("Checking payment... Please wait 5 seconds.", show_alert=True)
+        await query.answer("✅ Checking payment... Please wait 5 seconds.", show_alert=True)
         
         # Start check in background
         asyncio.create_task(
@@ -1282,7 +1230,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return
     
-    # ✅ NEW: Handle "Cancel" button
+    # ✅ Handle "Cancel" button
     elif data.startswith("cancel_"):
         api_order_id = data.split("_")[1]
         
@@ -1301,6 +1249,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         # Cancel the order
         orders[api_order_id]['status'] = 'cancelled'
         
+        # ✅ Remove from payment tracking
+        payment_tracking['has_coupon_been_sent'].pop(api_order_id, None)
+        payment_tracking['is_checking'].pop(api_order_id, None)
+        
         # Delete QR message
         try:
             await query.message.delete()
@@ -1313,6 +1265,11 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             text="❌ Your order has been cancelled.",
             reply_markup=get_menu(user_id)
         )
+        
+        # ✅ Clear user state if exists
+        if user_id in user_state:
+            if user_state[user_id].get('internal_order_id') == api_order_id:
+                del user_state[user_id]
         
         save_data()
         return
@@ -1610,7 +1567,7 @@ async def redeem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Statistics command - FIXED"""
+    """Statistics command"""
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ Admin only command!")
         return
@@ -1636,6 +1593,10 @@ async def restart_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if order.get('status') == 'pending':
             orders[order_id]['status'] = 'cancelled'
             cancelled_count += 1
+    
+    # Clear payment tracking
+    payment_tracking['has_coupon_been_sent'].clear()
+    payment_tracking['is_checking'].clear()
     
     user_state.clear()
     save_data()
