@@ -1,1 +1,0 @@
-ji jaat kala loda
